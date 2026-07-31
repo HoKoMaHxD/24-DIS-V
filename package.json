@@ -1,16 +1,14 @@
 {
-  "name": "discord-voice-client",
+  "name": "24-discord-video",
   "version": "1.0.0",
-  "description": "Discord voice client for staying connected to voice channels",
+  "description": "Discord 24/7 Video Stream Bot",
   "main": "index.js",
-  "type": "module",
   "scripts": {
     "start": "node index.js"
   },
   "dependencies": {
-"dependencies": {
-  "express": "^4.18.2",
-  "discord.js-selfbot-v13": "^2.14.0",
-  "@dank074/discord-video-stream": "^2.0.0"
-}
+    "express": "^4.18.2",
+    "discord.js-selfbot-v13": "^2.14.0",
+    "@dank074/discord-video-stream": "^2.0.0"
+  }
 }
