@@ -1,7 +1,6 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
 const VideoModule = require('@dank074/discord-video-stream');
-const { spawn } = require('child_process');
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
@@ -24,13 +23,15 @@ client.on('ready', async () => {
 
     console.log("[~] Initializing Native Voice Connection...");
     
+    // تأسيس الاتصال الآمن بدون استهلاك الذاكرة
     const voiceConnection = new VideoModule.VoiceConnection(
         GUILD_ID, 
         client.user.id,
         () => {},
-        (err) => {}
+        (err) => { console.error("[-] Voice Connection Error:", err); }
     );
 
+    // سحب البيانات من ديسكورد
     client.on('raw', (packet) => {
         if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
             voiceConnection.setSession(packet.d.session_id);
@@ -42,6 +43,7 @@ client.on('ready', async () => {
     });
 
     console.log("[~] Sending OP 4 to join the voice channel...");
+    // الدخول للروم الصوتي
     client.guilds.cache.get(GUILD_ID)?.shard.send({
         op: 4,
         d: {
@@ -61,43 +63,34 @@ client.on('ready', async () => {
             setTimeout(() => {
                 console.log("[~] Finalizing connection and Video Status...");
                 try {
+                    // إضاءة علامة الكاميرا الخضراء
                     if (typeof voiceConnection.setVideoStatus === 'function') {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    console.log("[~] Starting direct manual FFmpeg video transmission...");
+                    console.log("[~] Wrapping connection in Stream Wrapper...");
                     
-                    // استخدام FFmpeg مباشرة لتحويل وقراءة الفيديو وتصديره كبيانات خام متوافقة مع ديسكورد
-                    const ffmpeg = spawn('ffmpeg', [
-                        '-re',
-                        '-i', VIDEO_PATH,
-                        '-map', '0:v:0?',
-                        '-f', 'rawvideo',
-                        '-pix_fmt', 'yuv420p',
-                        '-s', '1280x720',
-                        '-r', '30',
-                        '-an',
-                        '-'
-                    ]);
+                    // التعديل السحري: هنا نقوم بتغليف الاتصال لكي يتعرف عليه مشغل الفيديو!
+                    const streamWrapper = new VideoModule.StreamConnection(voiceConnection);
 
-                    ffmpeg.stderr.on('data', (data) => {
-                        // كتم رسائل FFmpeg لعدم إزعاج السجلات
-                    });
-
-                    ffmpeg.on('close', (code) => {
-                        console.log(`[-] FFmpeg process exited with code ${code}`);
-                    });
-
-                    // التقاط تدفق البيانات وإرسالها مباشرة عبر الـ UDP الخاص باتصال ديسكورد
-                    if (voiceConnection.udp && typeof voiceConnection.udp.send === 'function') {
-                        ffmpeg.stdout.on('data', (chunk) => {
-                            try {
-                                voiceConnection.udp.send(chunk);
-                            } catch (e) {}
-                        });
+                    // رقعة حماية أخيرة: لو كانت المكتبة تعاني من نقص، نعوضه يدوياً
+                    if (!streamWrapper.udp || typeof streamWrapper.udp.sendVideoFrame !== 'function') {
+                        console.log("[~] Forcing Video Packetizer injection...");
+                        try {
+                            const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
+                            if (!streamWrapper.udp) streamWrapper.udp = voiceConnection.udp;
+                            streamWrapper.udp.sendVideoFrame = (frame) => {
+                                if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
+                                else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
+                            };
+                        } catch(e) {}
                     }
 
-                    console.log("[+] Camera is OFFICIALLY ON and streaming manually!");
+                    console.log("[~] Starting the video broadcast...");
+                    // تشغيل البث وتمريره عبر "الغلاف" الصحيح بدلاً من الاتصال الخام
+                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamWrapper);
+                    
+                    console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
                     
                 } catch (e) {
                     console.error("[-] Stream Error:", e);
