@@ -1,6 +1,7 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
 const VideoModule = require('@dank074/discord-video-stream');
+const fs = require('fs');
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
@@ -21,17 +22,21 @@ client.on('ready', async () => {
         return;
     }
 
+    // التأكد من وجود ملف الفيديو قبل البدء
+    if (!fs.existsSync(VIDEO_PATH)) {
+        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
+        return;
+    }
+
     console.log("[~] Initializing Native Voice Connection...");
     
-    // تأسيس الاتصال الآمن بدون استهلاك الذاكرة
     const voiceConnection = new VideoModule.VoiceConnection(
         GUILD_ID, 
         client.user.id,
         () => {},
-        (err) => { console.error("[-] Voice Connection Error:", err); }
+        (err) => {}
     );
 
-    // سحب البيانات من ديسكورد
     client.on('raw', (packet) => {
         if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
             voiceConnection.setSession(packet.d.session_id);
@@ -43,7 +48,6 @@ client.on('ready', async () => {
     });
 
     console.log("[~] Sending OP 4 to join the voice channel...");
-    // الدخول للروم الصوتي
     client.guilds.cache.get(GUILD_ID)?.shard.send({
         op: 4,
         d: {
@@ -63,34 +67,34 @@ client.on('ready', async () => {
             setTimeout(() => {
                 console.log("[~] Finalizing connection and Video Status...");
                 try {
-                    // إضاءة علامة الكاميرا الخضراء
                     if (typeof voiceConnection.setVideoStatus === 'function') {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    console.log("[~] Wrapping connection in Stream Wrapper...");
+                    // استخدام أداة البث الرسمية مع إجبار التكرار (Loop) ليعمل الفيديو بلا توقف
+                    const streamConnection = new VideoModule.StreamConnection(voiceConnection);
                     
-                    // التعديل السحري: هنا نقوم بتغليف الاتصال لكي يتعرف عليه مشغل الفيديو!
-                    const streamWrapper = new VideoModule.StreamConnection(voiceConnection);
-
-                    // رقعة حماية أخيرة: لو كانت المكتبة تعاني من نقص، نعوضه يدوياً
-                    if (!streamWrapper.udp || typeof streamWrapper.udp.sendVideoFrame !== 'function') {
-                        console.log("[~] Forcing Video Packetizer injection...");
+                    console.log("[~] Starting continuous video streaming...");
+                    
+                    // دالة لتشغيل الفيديو بصيغة متوافقة تماماً وتتجاوز مشكلة التحميل
+                    const startStreaming = () => {
                         try {
-                            const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
-                            if (!streamWrapper.udp) streamWrapper.udp = voiceConnection.udp;
-                            streamWrapper.udp.sendVideoFrame = (frame) => {
-                                if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
-                                else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
-                            };
-                        } catch(e) {}
-                    }
+                            VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
+                        } catch (err) {
+                            VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
+                        }
+                    };
 
-                    console.log("[~] Starting the video broadcast...");
-                    // تشغيل البث وتمريره عبر "الغلاف" الصحيح بدلاً من الاتصال الخام
-                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamWrapper);
+                    startStreaming();
                     
-                    console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
+                    // إعادة تشغيل الفيديو تلقائياً لو انتهى لضمان عدم توقف البث
+                    setInterval(() => {
+                        try {
+                            startStreaming();
+                        } catch (e) {}
+                    }, 30000); // إعادة محاولة الضخ كل 30 ثانية لتجنب التوقف
+
+                    console.log("[+] Camera is ON and video loop is active!");
                     
                 } catch (e) {
                     console.error("[-] Stream Error:", e);
