@@ -1,6 +1,6 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
-const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
+const VideoModule = require('@dank074/discord-video-stream');
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
@@ -21,37 +21,70 @@ client.on('ready', async () => {
         return;
     }
 
-    try {
-        console.log("[~] Initializing StreamConnection...");
-        // تهيئة الاتصال المباشر الخاص بالمكتبة
-        const streamConnection = new StreamConnection(client, GUILD_ID);
+    console.log("[~] Establishing Strict Voice Connection Bridge...");
+    
+    // 1. إنشاء الاتصال الصوتي وربطه بالسيرفر
+    const voiceConnection = new VideoModule.VoiceConnection(GUILD_ID, client);
 
-        console.log("[~] Forcing connection to voice channel...");
-        // إعطاء أمر الدخول للروم وتفعيل الكاميرا عبر واجهة ديسكورد
-        client.guilds.cache.get(GUILD_ID)?.shard.send({
-            op: 4,
-            d: {
-                guild_id: GUILD_ID,
-                channel_id: CHANNEL_ID,
-                self_mute: false,
-                self_deaf: false,
-                self_video: true
+    // 2. بناء "الجسر": التقاط بيانات ديسكورد السرية وتمريرها للمكتبة لبناء نفق الـ UDP
+    client.on('raw', async (packet) => {
+        // التقاط بيانات الجلسة وتمريرها
+        if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
+            console.log("[~] Captured Session Data. Forwarding to library...");
+            if (typeof voiceConnection.handleSession === 'function') {
+                voiceConnection.handleSession(packet.d);
             }
-        });
-
-        // الانتظار قليلاً حتى يستقر الاتصال ويبدأ البث بسلاسة
-        console.log("[~] Waiting for connection handshake...");
-        await new Promise(r => setTimeout(r, 4000));
-
-        console.log("[~] Starting 24/7 video stream...");
-        // تشغيل البث بالطريقة الصحيحة والمتوافقة تماماً مع الإصدار الأخير
-        streamLivestreamVideo(VIDEO_PATH, streamConnection);
+        }
         
-        console.log("[+] Camera is OFFICIALLY ON and streaming!");
-        
-    } catch (error) {
-        console.error("[-] Stream Error:", error);
-    }
+        // التقاط تصاريح السيرفر وتمريرها
+        if (packet.t === 'VOICE_SERVER_UPDATE' && packet.d.guild_id === GUILD_ID) {
+            console.log("[~] Captured Server Handshake. Forwarding to library...");
+            if (typeof voiceConnection.handleReady === 'function') {
+                voiceConnection.handleReady(packet.d);
+            }
+
+            console.log("[~] Handshake successful! Waiting 5 seconds for UDP tunneling...");
+            
+            // 3. الانتظار حتى تنتهي المكتبة من بناء النفق الداخلي للفيديو
+            setTimeout(() => {
+                try {
+                    // تفعيل زر الكاميرا
+                    if (typeof voiceConnection.setVideoStatus === 'function') {
+                        voiceConnection.setVideoStatus(true);
+                    }
+
+                    // التحقق من أن النفق تم بناؤه وأنه يحتوي على أداة sendVideoFrame
+                    if (!voiceConnection.udp || typeof voiceConnection.udp.sendVideoFrame !== 'function') {
+                        console.error("[-] ERROR: UDP Tunnel was not built properly by the library.");
+                        return;
+                    }
+
+                    console.log("[~] UDP Tunnel Verified! Initiating Video Broadcast...");
+                    
+                    // 4. تشغيل البث وتمريره عبر النفق السليم
+                    VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
+                    
+                    console.log("[+] Camera is OFFICIALLY ON and video is rendering!");
+                    
+                } catch (e) {
+                    console.error("[-] Video Stream Error:", e);
+                }
+            }, 5000);
+        }
+    });
+
+    console.log("[~] Forcing Discord to connect to the voice channel...");
+    // 5. إعطاء أمر الدخول للروم لتشغيل الجسر الذي بنيناه
+    client.guilds.cache.get(GUILD_ID)?.shard.send({
+        op: 4,
+        d: {
+            guild_id: GUILD_ID,
+            channel_id: CHANNEL_ID,
+            self_mute: false,
+            self_deaf: false,
+            self_video: true
+        }
+    });
 });
 
 client.login(TOKEN);
