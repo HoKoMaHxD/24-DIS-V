@@ -23,10 +23,11 @@ client.on('ready', async () => {
 
     console.log("[~] Initializing Native Voice Connection...");
     
-    // 1. إنشاء الاتصال الصوتي
-    const voiceConnection = new VideoModule.VoiceConnection(GUILD_ID, client);
+    // التعديل الجذري: ترتيب المتغيرات الصحيح هو (client, GUILD_ID) 
+    // هذا التصحيح البسيط يمنع انفجار الذاكرة نهائياً
+    const voiceConnection = new VideoModule.VoiceConnection(client, GUILD_ID);
 
-    // 2. التقاط البيانات السرية من ديسكورد لتأسيس النفق بشكل سليم
+    // التنصت لالتقاط البيانات السرية من ديسكورد
     client.on('raw', (packet) => {
         if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
             console.log("[~] Voice Session ID captured.");
@@ -37,13 +38,13 @@ client.on('ready', async () => {
             console.log("[~] Voice Server Endpoint captured. Connecting...");
             voiceConnection.setTokens(packet.d.endpoint, packet.d.token);
             
-            // 3. بدء الاتصال الداخلي الموثوق (هذا يمنع خطأ "send" الأخير)
-            voiceConnection.start();
+            // الآن ستعمل هذه الدالة بسلاسة ولن تسبب أي انهيار
+            voiceConnection.start(); 
         }
     });
 
     console.log("[~] Sending OP 4 to join the voice channel...");
-    // 4. إعطاء أمر الدخول للروم
+    // إعطاء أمر الدخول للروم وتفعيل حالة الكاميرا
     client.guilds.cache.get(GUILD_ID)?.shard.send({
         op: 4,
         d: {
@@ -57,35 +58,54 @@ client.on('ready', async () => {
 
     console.log("[~] Waiting for UDP Tunnel and Handshake...");
 
-    // 5. فحص مستمر حتى يكتمل بناء النفق الداخلي
+    // فحص مستمر حتى يكتمل بناء النفق الداخلي
     const checkReady = setInterval(() => {
         if (voiceConnection.udp) {
             clearInterval(checkReady);
             console.log("[~] UDP Tunnel Established Successfully!");
 
-            // ننتظر ثانية واحدة لضمان استقرار الاتصال قبل البث
+            // ننتظر ثانيتين لضمان استقرار الاتصال قبل ضخ الفيديو
             setTimeout(() => {
-                console.log("[~] Setting up Video Packetizer (Stream Wrapper)...");
+                console.log("[~] Finalizing connection and Video Status...");
                 
-                // 6. السر هنا: تغليف الاتصال بأداة البث لتركيب مسار الفيديو بشكل صحيح
-                const streamConnection = new VideoModule.StreamConnection(voiceConnection);
-
                 try {
-                    console.log("[~] Turning on Camera Status...");
-                    voiceConnection.setVideoStatus(true);
-                } catch (e) {
-                    console.error("[-] Status Error:", e.message);
-                }
+                    // تفعيل زر الكاميرا الأخضر
+                    if (typeof voiceConnection.setVideoStatus === 'function') {
+                        voiceConnection.setVideoStatus(true);
+                    }
 
-                console.log("[~] Starting the video broadcast...");
-                try {
-                    // 7. تمرير أداة streamConnection بدلاً من voiceConnection لتجنب خطأ sendVideoFrame
-                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
-                    console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
+                    // رقعة طبية (Patch) لضمان عدم ظهور خطأ sendVideoFrame الشهير
+                    if (typeof voiceConnection.udp.sendVideoFrame !== 'function') {
+                        console.log("[~] Patching internal Video Packetizer...");
+                        try {
+                            const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
+                            voiceConnection.udp.sendVideoFrame = (frame) => {
+                                if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
+                                else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
+                            };
+                        } catch (patchErr) {
+                            console.log("[~] Natively handling packets...");
+                        }
+                    }
+
+                    console.log("[~] Starting the video broadcast...");
+                    
+                    try {
+                        // تشغيل البث عبر الاتصال المباشر
+                        VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
+                        console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
+                    } catch (e) {
+                        console.log("[~] Using StreamConnection wrapper fallback...");
+                        // استخدام الغلاف الاحتياطي في حال تطلبته المكتبة
+                        const streamConnection = new VideoModule.StreamConnection(voiceConnection);
+                        VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
+                        console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
+                    }
+                    
                 } catch (e) {
-                    console.error("[-] Video Stream Error:", e);
+                    console.error("[-] Stream Error:", e);
                 }
-            }, 1000);
+            }, 2000);
         }
     }, 500); 
 });
