@@ -9,6 +9,6 @@
   "dependencies": {
     "express": "^4.18.2",
     "discord.js-selfbot-v13": "^2.14.0",
-    "@dank074/discord-video-stream": "^2.0.0"
+    "@dank074/discord-video-stream": "^1.5.1"
   }
 }
