@@ -29,11 +29,23 @@ client.on('ready', async () => {
 
     try {
         console.log("[~] Initializing StreamConnection...");
-        const streamConnection = new StreamConnection(client);
+        const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Joining voice channel...");
-        await streamConnection.joinVoiceChannel(GUILD_ID, CHANNEL_ID);
-        
+        console.log("[~] Forcing connection to voice channel...");
+        client.guilds.cache.get(GUILD_ID)?.shard.send({
+            op: 4,
+            d: {
+                guild_id: GUILD_ID,
+                channel_id: CHANNEL_ID,
+                self_mute: false,
+                self_deaf: false,
+                self_video: true
+            }
+        });
+
+        console.log("[~] Waiting for connection handshake...");
+        await new Promise(r => setTimeout(r, 4000));
+
         console.log("[~] Starting video stream broadcast...");
         streamLivestreamVideo(VIDEO_PATH, streamConnection);
         
