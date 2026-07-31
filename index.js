@@ -1,34 +1,16 @@
 const express = require('express');
-const { Client } = require('discord.js-selfbot-v13');
 const VideoModule = require('@dank074/discord-video-stream');
 
-// الطريقة الذكية لاستخراج أداة البث بدون أخطاء
-const Streamer = VideoModule.Streamer || VideoModule.default || VideoModule;
-
-// إعداد خادم الويب لمنع السكون
 const app = express();
-app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
-app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
+app.get('/', (req, res) => res.send('Debugging Mode'));
 
-// إعداد الحساب
-const client = new Client({ checkUpdate: false });
-const streamer = new Streamer(client);
-
-const TOKEN = process.env.TOKEN;
-const GUILD_ID = process.env.GUILD_ID;
-const CHANNEL_ID = process.env.CHANNEL_ID;
-const VIDEO_PATH = "./video.mp4"; 
-
-client.on('ready', async () => {
-    console.log(`[+] Logged in as ${client.user.tag}`);
-    try {
-        await streamer.joinVoice(GUILD_ID, CHANNEL_ID);
-        const stream = streamer.createStream();
-        stream.playVideo(VIDEO_PATH, true); // true لتكرار الفيديو
-        console.log("[+] Camera is ON!");
-    } catch (error) {
-        console.error("[-] Error:", error);
+app.listen(process.env.PORT || 3000, () => {
+    console.log("\n=========================================");
+    console.log("MODULE TYPE:", typeof VideoModule);
+    console.log("MODULE CONTENTS:", Object.keys(VideoModule));
+    
+    if (VideoModule.default) {
+        console.log("DEFAULT CONTENTS:", Object.keys(VideoModule.default));
     }
+    console.log("=========================================\n");
 });
-
-client.login(TOKEN);
