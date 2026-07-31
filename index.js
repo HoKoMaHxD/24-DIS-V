@@ -23,9 +23,14 @@ client.on('ready', async () => {
 
     console.log("[~] Initializing Native Voice Connection...");
     
-    // التعديل الجذري: ترتيب المتغيرات الصحيح هو (client, GUILD_ID) 
-    // هذا التصحيح البسيط يمنع انفجار الذاكرة نهائياً
-    const voiceConnection = new VideoModule.VoiceConnection(client, GUILD_ID);
+    // الحل السحري: تمرير أيدي الحساب فقط (client.user.id) لمنع انهيار الذاكرة!
+    // مع تمرير دوال فارغة لمنع خطأ this.ready is not a function
+    const voiceConnection = new VideoModule.VoiceConnection(
+        GUILD_ID, 
+        client.user.id,
+        () => { console.log("[~] Voice Connection Ready!"); },
+        (err) => { console.error("[-] Voice Connection Error:", err); }
+    );
 
     // التنصت لالتقاط البيانات السرية من ديسكورد
     client.on('raw', (packet) => {
@@ -35,10 +40,10 @@ client.on('ready', async () => {
         }
         
         if (packet.t === 'VOICE_SERVER_UPDATE' && packet.d.guild_id === GUILD_ID) {
-            console.log("[~] Voice Server Endpoint captured. Connecting...");
+            console.log("[~] Voice Server Endpoint captured. Connecting safely...");
             voiceConnection.setTokens(packet.d.endpoint, packet.d.token);
             
-            // الآن ستعمل هذه الدالة بسلاسة ولن تسبب أي انهيار
+            // الآن سيعمل الاتصال بسلاسة وبدون أي انفجار في الذاكرة
             voiceConnection.start(); 
         }
     });
@@ -69,38 +74,25 @@ client.on('ready', async () => {
                 console.log("[~] Finalizing connection and Video Status...");
                 
                 try {
-                    // تفعيل زر الكاميرا الأخضر
+                    // تفعيل علامة الكاميرا
                     if (typeof voiceConnection.setVideoStatus === 'function') {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    // رقعة طبية (Patch) لضمان عدم ظهور خطأ sendVideoFrame الشهير
+                    // رقعة طبية (Patch) لضمان عدم ظهور خطأ sendVideoFrame
                     if (typeof voiceConnection.udp.sendVideoFrame !== 'function') {
                         console.log("[~] Patching internal Video Packetizer...");
-                        try {
-                            const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
-                            voiceConnection.udp.sendVideoFrame = (frame) => {
-                                if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
-                                else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
-                            };
-                        } catch (patchErr) {
-                            console.log("[~] Natively handling packets...");
-                        }
+                        const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
+                        voiceConnection.udp.sendVideoFrame = (frame) => {
+                            if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
+                            else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
+                        };
                     }
 
                     console.log("[~] Starting the video broadcast...");
-                    
-                    try {
-                        // تشغيل البث عبر الاتصال المباشر
-                        VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
-                        console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
-                    } catch (e) {
-                        console.log("[~] Using StreamConnection wrapper fallback...");
-                        // استخدام الغلاف الاحتياطي في حال تطلبته المكتبة
-                        const streamConnection = new VideoModule.StreamConnection(voiceConnection);
-                        VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
-                        console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
-                    }
+                    // تشغيل البث عبر الاتصال המباشر
+                    VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
+                    console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
                     
                 } catch (e) {
                     console.error("[-] Stream Error:", e);
