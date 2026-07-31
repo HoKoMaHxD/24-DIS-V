@@ -21,26 +21,9 @@ client.on('ready', async () => {
         return;
     }
 
-    // --- النظام الأول: استخدام أداة البث الرسمية (Go Live) إن وُجدت ---
-    if (VideoModule.Streamer) {
-        console.log("[~] Official Streamer API detected. Initializing Go Live...");
-        const streamer = new VideoModule.Streamer(client);
-        try {
-            await streamer.joinVoice(GUILD_ID, CHANNEL_ID);
-            console.log("[~] Voice Channel Joined! Creating Stream...");
-            const streamConn = await streamer.createStream();
-            
-            console.log("[~] Broadcasting video...");
-            VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConn);
-            console.log("[+] Stream is OFFICIALLY ON!");
-        } catch (e) {
-            console.error("[-] Streamer API Error:", e);
-        }
-        return; 
-    }
-
-    // --- النظام الثاني: حقن الكاميرا بالقوة (Search & Rescue Patch) ---
-    console.log("[~] Initializing Native Voice Connection for Camera...");
+    console.log("[~] Initializing Native Voice Connection...");
+    
+    // تأسيس الاتصال الآمن بدون استهلاك الذاكرة
     const voiceConnection = new VideoModule.VoiceConnection(
         GUILD_ID, 
         client.user.id,
@@ -48,6 +31,7 @@ client.on('ready', async () => {
         (err) => { console.error("[-] Voice Connection Error:", err); }
     );
 
+    // سحب البيانات من ديسكورد
     client.on('raw', (packet) => {
         if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
             voiceConnection.setSession(packet.d.session_id);
@@ -59,6 +43,7 @@ client.on('ready', async () => {
     });
 
     console.log("[~] Sending OP 4 to join the voice channel...");
+    // الدخول للروم الصوتي
     client.guilds.cache.get(GUILD_ID)?.shard.send({
         op: 4,
         d: {
@@ -78,37 +63,33 @@ client.on('ready', async () => {
             setTimeout(() => {
                 console.log("[~] Finalizing connection and Video Status...");
                 try {
+                    // إضاءة علامة الكاميرا الخضراء
                     if (typeof voiceConnection.setVideoStatus === 'function') {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    // هنا يحدث السحر: البحث عن الدالة المفقودة وحقنها
-                    if (typeof voiceConnection.udp.sendVideoFrame !== 'function') {
-                        console.log("[~] Missing sendVideoFrame. Initiating Search & Rescue Patch...");
-                        let patched = false;
-                        
-                        // البحث في كل ملفات المكتبة عن الوظيفة المطلوبة
-                        for (const key in VideoModule) {
-                            try {
-                                const proto = VideoModule[key].prototype;
-                                if (proto && typeof proto.sendVideoFrame === 'function') {
-                                    console.log(`[~] Found sendVideoFrame inside: ${key}`);
-                                    voiceConnection.udp.sendVideoFrame = proto.sendVideoFrame.bind(voiceConnection.udp);
-                                    patched = true;
-                                    break;
-                                }
-                            } catch (e) {}
-                        }
-                        
-                        if (!patched) {
-                            console.log("[-] CRITICAL: Could not find sendVideoFrame in library files!");
-                        } else {
-                            console.log("[~] Function injected successfully!");
-                        }
+                    console.log("[~] Wrapping connection in Stream Wrapper...");
+                    
+                    // التعديل السحري: هنا نقوم بتغليف الاتصال لكي يتعرف عليه مشغل الفيديو!
+                    const streamWrapper = new VideoModule.StreamConnection(voiceConnection);
+
+                    // رقعة حماية أخيرة: لو كانت المكتبة تعاني من نقص، نعوضه يدوياً
+                    if (!streamWrapper.udp || typeof streamWrapper.udp.sendVideoFrame !== 'function') {
+                        console.log("[~] Forcing Video Packetizer injection...");
+                        try {
+                            const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
+                            if (!streamWrapper.udp) streamWrapper.udp = voiceConnection.udp;
+                            streamWrapper.udp.sendVideoFrame = (frame) => {
+                                if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
+                                else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
+                            };
+                        } catch(e) {}
                     }
 
                     console.log("[~] Starting the video broadcast...");
-                    VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
+                    // تشغيل البث وتمريره عبر "الغلاف" الصحيح بدلاً من الاتصال الخام
+                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamWrapper);
+                    
                     console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
                     
                 } catch (e) {
