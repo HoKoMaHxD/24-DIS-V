@@ -1,5 +1,5 @@
 const express = require('express');
-const { Client } = require('discord.js-selfbot-v13');
+const { Client, Intents } = require('discord.js');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(require('ffmpeg-static'));
@@ -9,7 +9,13 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
 
-const client = new Client({ checkUpdate: false });
+// إعداد العميل باستخدام الإصدار المتوافق
+const client = new Client({
+    intents: [
+        Intents.FLAGS?.GUILDS || 1,
+        Intents.FLAGS?.GUILD_VOICE_STATES || 128
+    ]
+});
 
 const TOKEN = process.env.TOKEN;
 const GUILD_ID = process.env.GUILD_ID?.trim();
@@ -52,12 +58,11 @@ client.on('ready', async () => {
             streamConnection.setVideoStatus(true);
         }
 
-        console.log("[~] Processing and streaming video with FFmpeg to prevent Error 2015...");
+        console.log("[~] Processing and streaming video with FFmpeg...");
 
-        // استخدام FFmpeg لمعالجة الفيديو وضبط الإطارات والدقة لتتطابق مع معايير ديسكورد
         const command = ffmpeg(VIDEO_PATH)
             .inputOptions([
-                '-stream_loop -1', // تكرار الفيديو للأبد بلا توقف
+                '-stream_loop -1',
                 '-re'
             ])
             .outputOptions([
@@ -65,13 +70,12 @@ client.on('ready', async () => {
                 '-f mpegts',
                 '-codec:v libx264',
                 '-pix_fmt yuv420p',
-                '-r 30',          // تثبيت معدل الإطارات على 30 لتجنب خطأ 2015
+                '-r 30',
                 '-g 60',
                 '-b:v 1000k',
-                '-an'             // إلغاء الصوت لمنع التعارض
+                '-an'
             ]);
 
-        // ربط المعالج مباشرة ببث ديسكورد
         streamLivestreamVideo(command, streamConnection);
         
         console.log("[+] Camera is OFFICIALLY ON and video is streaming perfectly!");
