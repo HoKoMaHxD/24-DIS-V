@@ -1,6 +1,6 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
-const VideoModule = require('@dank074/discord-video-stream');
+const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
@@ -21,57 +21,37 @@ client.on('ready', async () => {
         return;
     }
 
-    console.log("[~] Hooking into Discord Voice API...");
-    
-    // التعديل السحري: تمرير client أولاً، واستخدام أداة واحدة للاتصال والبث!
-    const streamConnection = new VideoModule.StreamConnection(client, GUILD_ID);
+    try {
+        console.log("[~] Initializing StreamConnection...");
+        // تهيئة الاتصال المباشر الخاص بالمكتبة
+        const streamConnection = new StreamConnection(client, GUILD_ID);
 
-    // التنصت على ديسكورد وسحب الأرقام السرية لإنشاء النفق
-    client.on('raw', async (packet) => {
-        // سحب أيدي الجلسة (Session ID)
-        if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.user_id === client.user.id && packet.d.guild_id === GUILD_ID) {
-            console.log("[~] Voice Session ID captured!");
-            streamConnection.setSession(packet.d.session_id);
-        }
+        console.log("[~] Forcing connection to voice channel...");
+        // إعطاء أمر الدخول للروم وتفعيل الكاميرا عبر واجهة ديسكورد
+        client.guilds.cache.get(GUILD_ID)?.shard.send({
+            op: 4,
+            d: {
+                guild_id: GUILD_ID,
+                channel_id: CHANNEL_ID,
+                self_mute: false,
+                self_deaf: false,
+                self_video: true
+            }
+        });
+
+        // الانتظار قليلاً حتى يستقر الاتصال ويبدأ البث بسلاسة
+        console.log("[~] Waiting for connection handshake...");
+        await new Promise(r => setTimeout(r, 4000));
+
+        console.log("[~] Starting 24/7 video stream...");
+        // تشغيل البث بالطريقة الصحيحة والمتوافقة تماماً مع الإصدار الأخير
+        streamLivestreamVideo(VIDEO_PATH, streamConnection);
         
-        // سحب مفتاح السيرفر (Endpoint & Token)
-        if (packet.t === 'VOICE_SERVER_UPDATE' && packet.d.guild_id === GUILD_ID) {
-            console.log("[~] Voice Server Endpoint captured!");
-            streamConnection.setTokens(packet.d.endpoint, packet.d.token);
-            
-            console.log("[~] Establishing internal Voice WebSocket...");
-            // بدء الاتصال الداخلي الموثوق
-            streamConnection.start(); 
-            
-            // الانتظار 4 ثوانٍ حتى يتم بناء النفق بنجاح قبل بث الفيديو
-            setTimeout(() => {
-                try {
-                    console.log("[~] Sending Video Status (ON)...");
-                    streamConnection.setVideoStatus(true);
-                    
-                    console.log("[~] Pushing video data through the stream...");
-                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
-                    
-                    console.log("[+] Camera is OFFICIALLY ON! You should see it now.");
-                } catch (e) {
-                    console.error("[-] Stream Error:", e);
-                }
-            }, 4000); 
-        }
-    });
-
-    console.log("[~] Forcing connection to voice channel...");
-    // إعطاء أمر الدخول للروم لتفعيل عملية السحب
-    client.guilds.cache.get(GUILD_ID)?.shard.send({
-        op: 4,
-        d: {
-            guild_id: GUILD_ID,
-            channel_id: CHANNEL_ID,
-            self_mute: false,
-            self_deaf: false,
-            self_video: true
-        }
-    });
+        console.log("[+] Camera is OFFICIALLY ON and streaming!");
+        
+    } catch (error) {
+        console.error("[-] Stream Error:", error);
+    }
 });
 
 client.login(TOKEN);
