@@ -1,6 +1,6 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
-const { Streamer } = require('@dank074/discord-video-stream');
+const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const fs = require('fs');
 
 const app = express();
@@ -28,29 +28,16 @@ client.on('ready', async () => {
     }
 
     try {
-        console.log("[~] Initializing Official Streamer Module...");
-        const streamer = new Streamer(client);
+        console.log("[~] Initializing StreamConnection...");
+        const streamConnection = new StreamConnection(client);
 
         console.log("[~] Joining voice channel...");
-        await streamer.joinVoice(GUILD_ID, CHANNEL_ID);
+        await streamConnection.joinVoiceChannel(GUILD_ID, CHANNEL_ID);
         
-        console.log("[~] Creating video stream tunnel...");
-        const ffmpegArgs = [
-            '-stream_loop', '-1',
-            '-re',
-            '-i', VIDEO_PATH,
-            '-map', '0:v:0?',
-            '-pix_fmt', 'yuv420p',
-            '-r', '30',
-            '-g', '60',
-            '-b:v', '1000k',
-            '-f', 'mpegts',
-            '-'
-        ];
-
-        // بدء البث المباشر الم توافق مع ديسكورد لمنع خطأ 2015
-        await streamer.streamVideo(VIDEO_PATH);
-        console.log("[+] Camera and Video Stream are OFFICIALLY LIVE!");
+        console.log("[~] Starting video stream broadcast...");
+        streamLivestreamVideo(VIDEO_PATH, streamConnection);
+        
+        console.log("[+] Camera is OFFICIALLY ON and streaming successfully!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
