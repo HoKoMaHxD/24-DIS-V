@@ -20,60 +20,59 @@ client.on('ready', async () => {
         console.error("[-] ERROR: GUILD_ID or CHANNEL_ID is missing!");
         return;
     }
+
+    console.log("[~] Hooking into Discord Voice API...");
     
-    const guild = client.guilds.cache.get(GUILD_ID);
-    if (!guild) {
-        console.error(`[-] ERROR: Account is not in the server with ID: ${GUILD_ID}`);
-        return;
-    }
+    // 1. تجهيز أدوات الاتصال بالروم
+    const voiceConnection = new VideoModule.VoiceConnection(GUILD_ID, client);
+    const streamConnection = new VideoModule.StreamConnection(voiceConnection);
 
-    try {
-        console.log("[~] Preparing video streaming modules...");
-        
-        // 1. تجهيز أداة الاتصال بالروم
-        const voiceConnection = new VideoModule.VoiceConnection(GUILD_ID, client);
-        
-        // 2. تجهيز نفق مسار الفيديو
-        const streamConnection = new VideoModule.StreamConnection(voiceConnection);
-        
-        console.log("[~] Entering the voice channel with Camera enabled...");
-        
-        // 3. إجبار ديسكورد على إدخال الحساب بصلاحية الكاميرا
-        guild.shard.send({
-            op: 4,
-            d: {
-                guild_id: GUILD_ID,
-                channel_id: CHANNEL_ID,
-                self_mute: false,
-                self_deaf: false,
-                self_video: true
-            }
-        });
-        
-        // 4. الانتظار 5 ثوانٍ لكي يتمكن ديسكورد من إنشاء مسار البث بنجاح
-        console.log("[~] Waiting 5 seconds for Discord handshake...");
-        await new Promise(r => setTimeout(r, 5000)); 
-        
-        // 5. تأكيد تفعيل حالة الفيديو للحساب
-        if (typeof voiceConnection.setVideoStatus === 'function') {
-            voiceConnection.setVideoStatus(true);
+    // 2. التنصت على ديسكورد وسحب الأرقام السرية لإنشاء النفق
+    client.on('raw', async (packet) => {
+        // سحب أيدي الجلسة (Session ID)
+        if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.user_id === client.user.id && packet.d.guild_id === GUILD_ID) {
+            console.log("[~] Voice Session ID captured!");
+            voiceConnection.setSession(packet.d.session_id);
         }
         
-        console.log("[~] Broadcasting video...");
-        
-        // 6. تشغيل الفيديو وتمريره عبر النفق الذي أنشأناه
-        try {
-            VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
-        } catch (e) {
-            console.log("[~] Fallback to voiceConnection for streaming...");
-            VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
+        // سحب مفتاح السيرفر (Endpoint & Token)
+        if (packet.t === 'VOICE_SERVER_UPDATE' && packet.d.guild_id === GUILD_ID) {
+            console.log("[~] Voice Server Endpoint captured!");
+            voiceConnection.setTokens(packet.d.endpoint, packet.d.token);
+            
+            console.log("[~] Establishing internal Voice WebSocket...");
+            // 3. بدء الاتصال الداخلي الموثوق
+            voiceConnection.start(); 
+            
+            // 4. الانتظار 4 ثوانٍ حتى يتم بناء النفق بنجاح قبل بث الفيديو
+            setTimeout(() => {
+                try {
+                    console.log("[~] Sending Video Status (ON)...");
+                    voiceConnection.setVideoStatus(true);
+                    
+                    console.log("[~] Pushing video data through the stream...");
+                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
+                    
+                    console.log("[+] Camera is OFFICIALLY ON! You should see it now.");
+                } catch (e) {
+                    console.error("[-] Stream Error:", e);
+                }
+            }, 4000); 
         }
+    });
 
-        console.log("[+] Camera is ON and visible in the room!");
-        
-    } catch (error) {
-        console.error("[-] Error Details:", error);
-    }
+    console.log("[~] Forcing connection to voice channel...");
+    // 5. إعطاء أمر الدخول للروم لتفعيل عملية السحب
+    client.guilds.cache.get(GUILD_ID)?.shard.send({
+        op: 4,
+        d: {
+            guild_id: GUILD_ID,
+            channel_id: CHANNEL_ID,
+            self_mute: false,
+            self_deaf: false,
+            self_video: true
+        }
+    });
 });
 
 client.login(TOKEN);
