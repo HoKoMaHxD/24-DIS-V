@@ -1,5 +1,5 @@
 const express = require('express');
-const { Client, Intents } = require('discord.js');
+const { Client, GatewayIntentBits } = require('discord.js');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(require('ffmpeg-static'));
@@ -9,11 +9,11 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
 
-// إعداد العميل باستخدام الإصدار المتوافق
+// إعدادات الاتصال المتوافقة مع الإصدار الحديث
 const client = new Client({
     intents: [
-        Intents.FLAGS?.GUILDS || 1,
-        Intents.FLAGS?.GUILD_VOICE_STATES || 128
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
