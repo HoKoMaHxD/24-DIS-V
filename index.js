@@ -23,15 +23,13 @@ client.on('ready', async () => {
 
     console.log("[~] Initializing Native Voice Connection...");
     
-    // تأسيس الاتصال الآمن بدون استهلاك الذاكرة
     const voiceConnection = new VideoModule.VoiceConnection(
         GUILD_ID, 
         client.user.id,
         () => {},
-        (err) => { console.error("[-] Voice Connection Error:", err); }
+        (err) => {}
     );
 
-    // سحب البيانات من ديسكورد
     client.on('raw', (packet) => {
         if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
             voiceConnection.setSession(packet.d.session_id);
@@ -43,7 +41,6 @@ client.on('ready', async () => {
     });
 
     console.log("[~] Sending OP 4 to join the voice channel...");
-    // الدخول للروم الصوتي
     client.guilds.cache.get(GUILD_ID)?.shard.send({
         op: 4,
         d: {
@@ -63,31 +60,39 @@ client.on('ready', async () => {
             setTimeout(() => {
                 console.log("[~] Finalizing connection and Video Status...");
                 try {
-                    // إضاءة علامة الكاميرا الخضراء
                     if (typeof voiceConnection.setVideoStatus === 'function') {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    console.log("[~] Wrapping connection in Stream Wrapper...");
-                    
-                    // التعديل السحري: هنا نقوم بتغليف الاتصال لكي يتعرف عليه مشغل الفيديو!
                     const streamWrapper = new VideoModule.StreamConnection(voiceConnection);
 
-                    // رقعة حماية أخيرة: لو كانت المكتبة تعاني من نقص، نعوضه يدوياً
-                    if (!streamWrapper.udp || typeof streamWrapper.udp.sendVideoFrame !== 'function') {
-                        console.log("[~] Forcing Video Packetizer injection...");
-                        try {
-                            const packetizer = new VideoModule.VideoPacketizerH264(voiceConnection);
-                            if (!streamWrapper.udp) streamWrapper.udp = voiceConnection.udp;
-                            streamWrapper.udp.sendVideoFrame = (frame) => {
-                                if (typeof packetizer.sendFrame === 'function') packetizer.sendFrame(frame);
-                                else if (typeof packetizer.onFrame === 'function') packetizer.onFrame(frame);
-                            };
-                        } catch(e) {}
+                    // --- الحل اليدوي العبقري: حقن دالة sendVideoFrame مباشرة ---
+                    if (!streamWrapper.udp) streamWrapper.udp = voiceConnection.udp;
+                    
+                    if (streamWrapper.udp) {
+                        console.log("[~] Injecting custom sendVideoFrame handler...");
+                        
+                        // بناء دالة الإرسال يدوياً لتتجاوز خطأ المكتبة
+                        streamWrapper.udp.sendVideoFrame = function (frame) {
+                            try {
+                                if (this.conn && typeof this.conn.send === 'function') {
+                                    this.conn.send(frame);
+                                } else if (typeof this.send === 'function' && this !== streamWrapper.udp) {
+                                    this.send(frame);
+                                } else if (voiceConnection.udp && typeof voiceConnection.udp.socket === 'object') {
+                                    // إرسال الإطار مباشرة عبر حزمة الـ UDP الخاصة باتصال ديسكورد
+                                    const socket = voiceConnection.udp.socket;
+                                    if (socket && typeof socket.send === 'function') {
+                                        socket.send(frame, 0, frame.length, voiceConnection.udp.port, voiceConnection.udp.ip);
+                                    }
+                                }
+                            } catch (err) {
+                                // تجاهل الأخطاء العابرة لإبقاء البث مستمراً
+                            }
+                        };
                     }
 
                     console.log("[~] Starting the video broadcast...");
-                    // تشغيل البث وتمريره عبر "الغلاف" الصحيح بدلاً من الاتصال الخام
                     VideoModule.streamLivestreamVideo(VIDEO_PATH, streamWrapper);
                     
                     console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
