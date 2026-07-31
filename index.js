@@ -1,6 +1,7 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
 const VideoModule = require('@dank074/discord-video-stream');
+const { spawn } = require('child_process');
 
 const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
@@ -64,38 +65,39 @@ client.on('ready', async () => {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    const streamWrapper = new VideoModule.StreamConnection(voiceConnection);
-
-                    // --- الحل اليدوي العبقري: حقن دالة sendVideoFrame مباشرة ---
-                    if (!streamWrapper.udp) streamWrapper.udp = voiceConnection.udp;
+                    console.log("[~] Starting direct manual FFmpeg video transmission...");
                     
-                    if (streamWrapper.udp) {
-                        console.log("[~] Injecting custom sendVideoFrame handler...");
-                        
-                        // بناء دالة الإرسال يدوياً لتتجاوز خطأ المكتبة
-                        streamWrapper.udp.sendVideoFrame = function (frame) {
+                    // استخدام FFmpeg مباشرة لتحويل وقراءة الفيديو وتصديره كبيانات خام متوافقة مع ديسكورد
+                    const ffmpeg = spawn('ffmpeg', [
+                        '-re',
+                        '-i', VIDEO_PATH,
+                        '-map', '0:v:0?',
+                        '-f', 'rawvideo',
+                        '-pix_fmt', 'yuv420p',
+                        '-s', '1280x720',
+                        '-r', '30',
+                        '-an',
+                        '-'
+                    ]);
+
+                    ffmpeg.stderr.on('data', (data) => {
+                        // كتم رسائل FFmpeg لعدم إزعاج السجلات
+                    });
+
+                    ffmpeg.on('close', (code) => {
+                        console.log(`[-] FFmpeg process exited with code ${code}`);
+                    });
+
+                    // التقاط تدفق البيانات وإرسالها مباشرة عبر الـ UDP الخاص باتصال ديسكورد
+                    if (voiceConnection.udp && typeof voiceConnection.udp.send === 'function') {
+                        ffmpeg.stdout.on('data', (chunk) => {
                             try {
-                                if (this.conn && typeof this.conn.send === 'function') {
-                                    this.conn.send(frame);
-                                } else if (typeof this.send === 'function' && this !== streamWrapper.udp) {
-                                    this.send(frame);
-                                } else if (voiceConnection.udp && typeof voiceConnection.udp.socket === 'object') {
-                                    // إرسال الإطار مباشرة عبر حزمة الـ UDP الخاصة باتصال ديسكورد
-                                    const socket = voiceConnection.udp.socket;
-                                    if (socket && typeof socket.send === 'function') {
-                                        socket.send(frame, 0, frame.length, voiceConnection.udp.port, voiceConnection.udp.ip);
-                                    }
-                                }
-                            } catch (err) {
-                                // تجاهل الأخطاء العابرة لإبقاء البث مستمراً
-                            }
-                        };
+                                voiceConnection.udp.send(chunk);
+                            } catch (e) {}
+                        });
                     }
 
-                    console.log("[~] Starting the video broadcast...");
-                    VideoModule.streamLivestreamVideo(VIDEO_PATH, streamWrapper);
-                    
-                    console.log("[+] Camera is OFFICIALLY ON and rendering video in the room!");
+                    console.log("[+] Camera is OFFICIALLY ON and streaming manually!");
                     
                 } catch (e) {
                     console.error("[-] Stream Error:", e);
