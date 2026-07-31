@@ -1,7 +1,8 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
-const VideoModule = require('@dank074/discord-video-stream');
-const { spawn } = require('child_process');
+const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
+const ffmpeg = require('fluent-ffmpeg');
+ffmpeg.setFfmpegPath(require('ffmpeg-static'));
 const fs = require('fs');
 
 const app = express();
@@ -24,62 +25,60 @@ client.on('ready', async () => {
     }
 
     if (!fs.existsSync(VIDEO_PATH)) {
-        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found!");
+        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
         return;
     }
 
-    console.log("[~] Initializing StreamConnection...");
-    const streamConnection = new VideoModule.StreamConnection(client, GUILD_ID);
+    try {
+        console.log("[~] Initializing StreamConnection...");
+        const streamConnection = new StreamConnection(client, GUILD_ID);
 
-    // تفعيل الاتصال ودخول الروم
-    client.guilds.cache.get(GUILD_ID)?.shard.send({
-        op: 4,
-        d: {
-            guild_id: GUILD_ID,
-            channel_id: CHANNEL_ID,
-            self_mute: false,
-            self_deaf: false,
-            self_video: true
-        }
-    });
-
-    console.log("[~] Waiting for connection handshake...");
-    await new Promise(r => setTimeout(r, 4000));
-
-    if (typeof streamConnection.setVideoStatus === 'function') {
-        streamConnection.setVideoStatus(true);
-    }
-
-    console.log("[~] Starting direct video pipe (Bypassing broken library functions)...");
-
-    // تشغيل FFmpeg مع حقن الدالة الوهمية التي يطلبها النظام لمنع الانهيار
-    if (!streamConnection.udp) streamConnection.udp = {};
-    
-    streamConnection.udp.sendVideoFrame = (frame) => {
-        try {
-            if (streamConnection.udp.socket && typeof streamConnection.udp.socket.send === 'function') {
-                streamConnection.udp.socket.send(frame);
+        console.log("[~] Forcing connection to voice channel...");
+        client.guilds.cache.get(GUILD_ID)?.shard.send({
+            op: 4,
+            d: {
+                guild_id: GUILD_ID,
+                channel_id: CHANNEL_ID,
+                self_mute: false,
+                self_deaf: false,
+                self_video: true
             }
-        } catch (e) {}
-    };
+        });
 
-    // تشغيل معالج الفيديو لمنع خطأ التحميل والكاميرا
-    const ffmpeg = spawn('ffmpeg', [
-        '-stream_loop', '-1',
-        '-re',
-        '-i', VIDEO_PATH,
-        '-map', '0:v:0?',
-        '-f', 'rawvideo',
-        '-pix_fmt', 'yuv420p',
-        '-s', '1280x720',
-        '-r', '30',
-        '-an',
-        '-'
-    ]);
+        console.log("[~] Waiting for connection handshake...");
+        await new Promise(r => setTimeout(r, 4000));
 
-    ffmpeg.stderr.on('data', () => {});
+        if (typeof streamConnection.setVideoStatus === 'function') {
+            streamConnection.setVideoStatus(true);
+        }
 
-    console.log("[+] Camera is OFFICIALLY ON and streaming smoothly!");
+        console.log("[~] Processing and streaming video with FFmpeg to prevent Error 2015...");
+
+        // استخدام FFmpeg لمعالجة الفيديو وضبط الإطارات والدقة لتتطابق مع معايير ديسكورد
+        const command = ffmpeg(VIDEO_PATH)
+            .inputOptions([
+                '-stream_loop -1', // تكرار الفيديو للأبد بلا توقف
+                '-re'
+            ])
+            .outputOptions([
+                '-map 0:v:0',
+                '-f mpegts',
+                '-codec:v libx264',
+                '-pix_fmt yuv420p',
+                '-r 30',          // تثبيت معدل الإطارات على 30 لتجنب خطأ 2015
+                '-g 60',
+                '-b:v 1000k',
+                '-an'             // إلغاء الصوت لمنع التعارض
+            ]);
+
+        // ربط المعالج مباشرة ببث ديسكورد
+        streamLivestreamVideo(command, streamConnection);
+        
+        console.log("[+] Camera is OFFICIALLY ON and video is streaming perfectly!");
+
+    } catch (error) {
+        console.error("[-] Stream Execution Error:", error);
+    }
 });
 
 client.login(TOKEN);
