@@ -1,6 +1,7 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
 const VideoModule = require('@dank074/discord-video-stream');
+const { spawn } = require('child_process');
 const fs = require('fs');
 
 const app = express();
@@ -22,9 +23,8 @@ client.on('ready', async () => {
         return;
     }
 
-    // التأكد من وجود ملف الفيديو قبل البدء
     if (!fs.existsSync(VIDEO_PATH)) {
-        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
+        console.error("[-] CRITICAL: 'video.mp4' file not found!");
         return;
     }
 
@@ -71,30 +71,46 @@ client.on('ready', async () => {
                         voiceConnection.setVideoStatus(true);
                     }
 
-                    // استخدام أداة البث الرسمية مع إجبار التكرار (Loop) ليعمل الفيديو بلا توقف
-                    const streamConnection = new VideoModule.StreamConnection(voiceConnection);
-                    
-                    console.log("[~] Starting continuous video streaming...");
-                    
-                    // دالة لتشغيل الفيديو بصيغة متوافقة تماماً وتتجاوز مشكلة التحميل
-                    const startStreaming = () => {
-                        try {
-                            VideoModule.streamLivestreamVideo(VIDEO_PATH, streamConnection);
-                        } catch (err) {
-                            VideoModule.streamLivestreamVideo(VIDEO_PATH, voiceConnection);
-                        }
-                    };
+                    console.log("[~] Launching FFmpeg live video pipe to bypass loading screen...");
 
-                    startStreaming();
-                    
-                    // إعادة تشغيل الفيديو تلقائياً لو انتهى لضمان عدم توقف البث
-                    setInterval(() => {
-                        try {
-                            startStreaming();
-                        } catch (e) {}
-                    }, 30000); // إعادة محاولة الضخ كل 30 ثانية لتجنب التوقف
+                    // تشغيل FFmpeg لبث الفيديو بصيغة حية تتوافق مع ديسكورد وتعمل بلا توقف (Loop)
+                    const ffmpeg = spawn('ffmpeg', [
+                        '-stream_loop', '-1', // تكرار الفيديو للأبد
+                        '-re',
+                        '-i', VIDEO_PATH,
+                        '-map', '0:v:0?',
+                        '-f', 'rawvideo',
+                        '-pix_fmt', 'yuv420p',
+                        '-s', '1280x720',
+                        '-r', '30',
+                        '-an', // إلغاء الصوت لتجنب مشاكل التوافق
+                        '-'
+                    ]);
 
-                    console.log("[+] Camera is ON and video loop is active!");
+                    ffmpeg.stderr.on('data', (data) => {
+                        // إخفاء السجلات غير الضرورية
+                    });
+
+                    ffmpeg.on('close', (code) => {
+                        console.log(`[-] FFmpeg stream process closed with code ${code}`);
+                    });
+
+                    // ضخ بيانات الفيديو مباشرة إلى نفق الاتصال فور خروجها من المعالج
+                    if (voiceConnection.udp) {
+                        const udpSocket = voiceConnection.udp.socket || voiceConnection.udp;
+                        
+                        ffmpeg.stdout.on('data', (chunk) => {
+                            try {
+                                if (typeof voiceConnection.udp.send === 'function') {
+                                    voiceConnection.udp.send(chunk);
+                                } else if (voiceConnection.udp.conn && typeof voiceConnection.udp.conn.send === 'function') {
+                                    voiceConnection.udp.conn.send(chunk);
+                                }
+                            } catch (e) {}
+                        });
+                    }
+
+                    console.log("[+] Camera is ON and live video streaming is active!");
                     
                 } catch (e) {
                     console.error("[-] Stream Error:", e);
