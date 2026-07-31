@@ -1,7 +1,6 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
-const VideoModule = require('@dank074/discord-video-stream');
-const { spawn } = require('child_process');
+const { Streamer } = require('@dank074/discord-video-stream');
 const fs = require('fs');
 
 const app = express();
@@ -24,100 +23,38 @@ client.on('ready', async () => {
     }
 
     if (!fs.existsSync(VIDEO_PATH)) {
-        console.error("[-] CRITICAL: 'video.mp4' file not found!");
+        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
         return;
     }
 
-    console.log("[~] Initializing Native Voice Connection...");
-    
-    const voiceConnection = new VideoModule.VoiceConnection(
-        GUILD_ID, 
-        client.user.id,
-        () => {},
-        (err) => {}
-    );
+    try {
+        console.log("[~] Initializing Official Streamer Module...");
+        const streamer = new Streamer(client);
 
-    client.on('raw', (packet) => {
-        if (packet.t === 'VOICE_STATE_UPDATE' && packet.d.guild_id === GUILD_ID && packet.d.user_id === client.user.id) {
-            voiceConnection.setSession(packet.d.session_id);
-        }
-        if (packet.t === 'VOICE_SERVER_UPDATE' && packet.d.guild_id === GUILD_ID) {
-            voiceConnection.setTokens(packet.d.endpoint, packet.d.token);
-            voiceConnection.start(); 
-        }
-    });
+        console.log("[~] Joining voice channel...");
+        await streamer.joinVoice(GUILD_ID, CHANNEL_ID);
+        
+        console.log("[~] Creating video stream tunnel...");
+        const ffmpegArgs = [
+            '-stream_loop', '-1',
+            '-re',
+            '-i', VIDEO_PATH,
+            '-map', '0:v:0?',
+            '-pix_fmt', 'yuv420p',
+            '-r', '30',
+            '-g', '60',
+            '-b:v', '1000k',
+            '-f', 'mpegts',
+            '-'
+        ];
 
-    console.log("[~] Sending OP 4 to join the voice channel...");
-    client.guilds.cache.get(GUILD_ID)?.shard.send({
-        op: 4,
-        d: {
-            guild_id: GUILD_ID,
-            channel_id: CHANNEL_ID,
-            self_mute: false,
-            self_deaf: false,
-            self_video: true
-        }
-    });
+        // بدء البث المباشر الم توافق مع ديسكورد لمنع خطأ 2015
+        await streamer.streamVideo(VIDEO_PATH);
+        console.log("[+] Camera and Video Stream are OFFICIALLY LIVE!");
 
-    const checkReady = setInterval(() => {
-        if (voiceConnection.udp) {
-            clearInterval(checkReady);
-            console.log("[~] UDP Tunnel Established Successfully!");
-
-            setTimeout(() => {
-                console.log("[~] Finalizing connection and Video Status...");
-                try {
-                    if (typeof voiceConnection.setVideoStatus === 'function') {
-                        voiceConnection.setVideoStatus(true);
-                    }
-
-                    console.log("[~] Launching FFmpeg live video pipe to bypass loading screen...");
-
-                    // تشغيل FFmpeg لبث الفيديو بصيغة حية تتوافق مع ديسكورد وتعمل بلا توقف (Loop)
-                    const ffmpeg = spawn('ffmpeg', [
-                        '-stream_loop', '-1', // تكرار الفيديو للأبد
-                        '-re',
-                        '-i', VIDEO_PATH,
-                        '-map', '0:v:0?',
-                        '-f', 'rawvideo',
-                        '-pix_fmt', 'yuv420p',
-                        '-s', '1280x720',
-                        '-r', '30',
-                        '-an', // إلغاء الصوت لتجنب مشاكل التوافق
-                        '-'
-                    ]);
-
-                    ffmpeg.stderr.on('data', (data) => {
-                        // إخفاء السجلات غير الضرورية
-                    });
-
-                    ffmpeg.on('close', (code) => {
-                        console.log(`[-] FFmpeg stream process closed with code ${code}`);
-                    });
-
-                    // ضخ بيانات الفيديو مباشرة إلى نفق الاتصال فور خروجها من المعالج
-                    if (voiceConnection.udp) {
-                        const udpSocket = voiceConnection.udp.socket || voiceConnection.udp;
-                        
-                        ffmpeg.stdout.on('data', (chunk) => {
-                            try {
-                                if (typeof voiceConnection.udp.send === 'function') {
-                                    voiceConnection.udp.send(chunk);
-                                } else if (voiceConnection.udp.conn && typeof voiceConnection.udp.conn.send === 'function') {
-                                    voiceConnection.udp.conn.send(chunk);
-                                }
-                            } catch (e) {}
-                        });
-                    }
-
-                    console.log("[+] Camera is ON and live video streaming is active!");
-                    
-                } catch (e) {
-                    console.error("[-] Stream Error:", e);
-                }
-            }, 2000);
-        }
-    }, 500); 
+    } catch (error) {
+        console.error("[-] Stream Execution Error:", error);
+    }
 });
 
 client.login(TOKEN);
