@@ -1,6 +1,9 @@
 const express = require('express');
 const { Client } = require('discord.js-selfbot-v13');
-const { Streamer } = require('@dank074/discord-video-stream');
+const VideoModule = require('@dank074/discord-video-stream');
+
+// الطريقة الذكية لاستخراج أداة البث بدون أخطاء
+const Streamer = VideoModule.Streamer || VideoModule.default || VideoModule;
 
 // إعداد خادم الويب لمنع السكون
 const app = express();
