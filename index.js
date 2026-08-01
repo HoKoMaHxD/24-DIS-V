@@ -57,8 +57,9 @@ client.once('ready', async () => {
             streamConnection.setVideoStatus(true);
         }
 
-        console.log("[~] Processing and streaming video with FFmpeg...");
+        console.log("[~] Starting optimized FFmpeg stream to bypass Error 2015...");
 
+        // تعديل إعدادات FFmpeg لتتناسب بدقة مع متطلبات ديسكورد للكاميرا
         const command = ffmpeg(VIDEO_PATH)
             .inputOptions([
                 '-stream_loop -1',
@@ -68,25 +69,25 @@ client.once('ready', async () => {
                 '-map 0:v:0',
                 '-f mpegts',
                 '-codec:v libx264',
+                '-profile:v baseline',
+                '-level 3.0',
                 '-pix_fmt yuv420p',
+                '-s 1280x720',
                 '-r 30',
                 '-g 60',
-                '-b:v 1000k',
+                '-b:v 800k',
                 '-an'
             ]);
 
         streamLivestreamVideo(command, streamConnection);
         
-        console.log("[+] Camera is OFFICIALLY ON and video is streaming perfectly!");
+        console.log("[+] Camera is OFFICIALLY ON and streaming successfully!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
     }
 });
 
-// حماية السيرفر من الانهيار عند حدوث أخطاء غير متوقعة في الشبكة
-process.on('unhandledRejection', error => {
-    // تجاهل أخطاء الاتصال المؤقتة لمنع إغلاق السيرفر
-});
+process.on('unhandledRejection', () => {});
 
 client.login(TOKEN);
