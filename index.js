@@ -1,4 +1,4 @@
-const express = the_express = require('express');
+const express = require('express');
 const { Client, GatewayIntentBits } = require('discord.js');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
@@ -34,38 +34,13 @@ client.once('ready', async () => {
         return;
     }
 
-    const guild = client.guilds.cache.get(GUILD_ID);
-    if (!guild) {
-        console.error("[-] ERROR: Bot is not in the specified Guild/Server!");
-        return;
-    }
-
     try {
-        console.log("[~] Initializing StreamConnection...");
+        console.log("[~] Initializing StreamConnection and joining voice channel...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Joining voice channel safely...");
-        
-        // استخدام دالة الانتظار للتأكد من جاهزية الشارد تماماً قبل إرسال أمر الدخول
-        await new Promise(resolve => setTimeout(resolve, 3000));
-
-        guild.shard.send({
-            op: 4,
-            d: {
-                guild_id: GUILD_ID,
-                channel_id: CHANNEL_ID,
-                self_mute: false,
-                self_deaf: false,
-                self_video: true
-            }
-        });
-
-        console.log("[~] Waiting for voice handshake to complete...");
-        await new Promise(r => setTimeout(r, 4000));
-
-        if (typeof streamConnection.setVideoStatus === 'function') {
-            streamConnection.setVideoStatus(true);
-        }
+        // استخدام دالة المكتبة الرسمية لدخول الروم وتشغيل الكاميرا تلقائياً
+        await streamConnection.joinVoiceChannel(CHANNEL_ID);
+        console.log("[+] Successfully joined voice channel and turned on camera!");
 
         console.log("[~] Starting optimized FFmpeg stream...");
 
@@ -89,8 +64,7 @@ client.once('ready', async () => {
             ]);
 
         streamLivestreamVideo(command, streamConnection);
-        
-        console.log("[+] Bot successfully joined the room and stream is active!");
+        console.log("[+] Video is streaming perfectly into the room!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
