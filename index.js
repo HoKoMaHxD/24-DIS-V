@@ -1,5 +1,5 @@
 const express = require('express');
-const { Client } = require('discord.js-selfbot-v13');
+const { Client, GatewayIntentBits } = require('discord.js');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(require('ffmpeg-static'));
@@ -9,11 +9,10 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
 
-const client = new Client({ 
-    checkUpdate: false,
+const client = new Client({
     intents: [
-        "GUILDS",
-        "GUILD_VOICE_STATES"
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildVoiceStates
     ]
 });
 
@@ -22,16 +21,22 @@ const GUILD_ID = process.env.GUILD_ID?.trim();
 const CHANNEL_ID = process.env.CHANNEL_ID?.trim();
 const VIDEO_PATH = "./video.mp4"; 
 
-client.on('ready', async () => {
+client.once('ready', async () => {
     console.log(`[+] Logged in successfully as ${client.user.tag}`);
     
     if (!GUILD_ID || !CHANNEL_ID) {
-        console.error("[-] ERROR: GUILD_ID or CHANNEL_ID is missing in Environment Variables!");
+        console.error("[-] ERROR: GUILD_ID or CHANNEL_ID is missing!");
         return;
     }
 
     if (!fs.existsSync(VIDEO_PATH)) {
-        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
+        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found!");
+        return;
+    }
+
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) {
+        console.error("[-] ERROR: Bot/Account is not in the specified Server!");
         return;
     }
 
@@ -39,16 +44,10 @@ client.on('ready', async () => {
         console.log("[~] Initializing StreamConnection...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Forcing connection to voice channel and turning on camera...");
-        
-        // استخدام الطريقة المباشرة المضمنة في السيلف بوت لدخول الروم وتشغيل الفيديو
-        await streamConnection.joinVoiceChannel(CHANNEL_ID);
-        
-        if (typeof streamConnection.setVideoStatus === 'function') {
-            streamConnection.setVideoStatus(true);
-        }
+        console.log("[~] Joining voice channel...");
+        await streamConnection.joinChannel(CHANNEL_ID);
 
-        console.log("[~] Starting FFmpeg video stream broadcast...");
+        console.log("[~] Starting optimized FFmpeg stream...");
 
         const command = ffmpeg(VIDEO_PATH)
             .inputOptions([
@@ -71,7 +70,7 @@ client.on('ready', async () => {
 
         streamLivestreamVideo(command, streamConnection);
         
-        console.log("[+] SUCCESS: Account is in the room and camera stream is live!");
+        console.log("[+] SUCCESS: Account joined the room and camera stream is live!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
