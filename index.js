@@ -1,5 +1,5 @@
 const express = require('express');
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client } = require('discord.js-selfbot-v13');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(require('ffmpeg-static'));
@@ -9,10 +9,11 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
 
-const client = new Client({
+const client = new Client({ 
+    checkUpdate: false,
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates
+        "GUILDS",
+        "GUILD_VOICE_STATES"
     ]
 });
 
@@ -21,22 +22,16 @@ const GUILD_ID = process.env.GUILD_ID?.trim();
 const CHANNEL_ID = process.env.CHANNEL_ID?.trim();
 const VIDEO_PATH = "./video.mp4"; 
 
-client.once('ready', async () => {
+client.on('ready', async () => {
     console.log(`[+] Logged in successfully as ${client.user.tag}`);
     
     if (!GUILD_ID || !CHANNEL_ID) {
-        console.error("[-] ERROR: GUILD_ID or CHANNEL_ID is missing!");
+        console.error("[-] ERROR: GUILD_ID or CHANNEL_ID is missing in Environment Variables!");
         return;
     }
 
     if (!fs.existsSync(VIDEO_PATH)) {
-        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found!");
-        return;
-    }
-
-    const guild = client.guilds.cache.get(GUILD_ID);
-    if (!guild) {
-        console.error("[-] ERROR: Bot is not in the specified Server/Guild!");
+        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
         return;
     }
 
@@ -44,28 +39,16 @@ client.once('ready', async () => {
         console.log("[~] Initializing StreamConnection...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Forcing direct entry to voice channel via WebSocket Opcode 4...");
+        console.log("[~] Forcing connection to voice channel and turning on camera...");
         
-        // إرسال أمر الانضمام المباشر للسيرفر لتخطى أي عائق في المكتبة
-        guild.shard.send({
-            op: 4,
-            d: {
-                guild_id: GUILD_ID,
-                channel_id: CHANNEL_ID,
-                self_mute: false,
-                self_deaf: false,
-                self_video: true
-            }
-        });
-
-        console.log("[~] Waiting for voice connection handshake...");
-        await new Promise(r => setTimeout(r, 5000));
-
+        // استخدام الطريقة المباشرة المضمنة في السيلف بوت لدخول الروم وتشغيل الفيديو
+        await streamConnection.joinVoiceChannel(CHANNEL_ID);
+        
         if (typeof streamConnection.setVideoStatus === 'function') {
             streamConnection.setVideoStatus(true);
         }
 
-        console.log("[~] Starting optimized FFmpeg stream...");
+        console.log("[~] Starting FFmpeg video stream broadcast...");
 
         const command = ffmpeg(VIDEO_PATH)
             .inputOptions([
@@ -88,7 +71,7 @@ client.once('ready', async () => {
 
         streamLivestreamVideo(command, streamConnection);
         
-        console.log("[+] Stream and camera execution triggered successfully!");
+        console.log("[+] SUCCESS: Account is in the room and camera stream is live!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
