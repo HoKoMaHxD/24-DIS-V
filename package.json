@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@dank074/discord-video-stream": "latest",
-    "discord.js-selfbot-v13": "^13.15.11",
+    "discord.js": "^14.14.1",
     "express": "^4.19.2",
     "ffmpeg-static": "^5.2.0",
     "fluent-ffmpeg": "^2.1.3",
