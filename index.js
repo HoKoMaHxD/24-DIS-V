@@ -9,7 +9,6 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
 
-// إعدادات الاتصال المتوافقة مع الإصدار الحديث
 const client = new Client({
     intents: [
         GatewayIntentBits.Guilds,
@@ -22,8 +21,8 @@ const GUILD_ID = process.env.GUILD_ID?.trim();
 const CHANNEL_ID = process.env.CHANNEL_ID?.trim();
 const VIDEO_PATH = "./video.mp4"; 
 
-client.on('ready', async () => {
-    console.log(`[+] Logged in as ${client.user.tag}`);
+client.once('ready', async () => {
+    console.log(`[+] Logged in successfully as ${client.user.tag}`);
     
     if (!GUILD_ID || !CHANNEL_ID) {
         console.error("[-] ERROR: GUILD_ID or CHANNEL_ID is missing!");
@@ -83,6 +82,11 @@ client.on('ready', async () => {
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
     }
+});
+
+// حماية السيرفر من الانهيار عند حدوث أخطاء غير متوقعة في الشبكة
+process.on('unhandledRejection', error => {
+    // تجاهل أخطاء الاتصال المؤقتة لمنع إغلاق السيرفر
 });
 
 client.login(TOKEN);
