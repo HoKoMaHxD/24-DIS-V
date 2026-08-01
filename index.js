@@ -34,18 +34,21 @@ client.once('ready', async () => {
         return;
     }
 
-    const guild = client.guilds.cache.get(GUILD_ID);
-    if (!guild) {
-        console.error("[-] ERROR: Bot/Account is not in the specified Server!");
-        return;
-    }
-
     try {
         console.log("[~] Initializing StreamConnection...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Joining voice channel...");
+        console.log("[~] Connecting directly to voice channel...");
+        
+        // جلب الروم الصوتي والاتصال به بشكل مباشر ومضمون
+        const channel = await client.channels.fetch(CHANNEL_ID);
+        if (!channel || !channel.isVoiceBased()) {
+            console.error("[-] ERROR: Channel not found or is not a voice channel!");
+            return;
+        }
+
         await streamConnection.joinChannel(CHANNEL_ID);
+        console.log("[+] Successfully joined the voice channel!");
 
         console.log("[~] Starting optimized FFmpeg stream...");
 
@@ -70,7 +73,7 @@ client.once('ready', async () => {
 
         streamLivestreamVideo(command, streamConnection);
         
-        console.log("[+] SUCCESS: Account joined the room and camera stream is live!");
+        console.log("[+] SUCCESS: Camera is ON and video is streaming!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
