@@ -1,4 +1,4 @@
-const express = require('express');
+const express = the_express = require('express');
 const { Client, GatewayIntentBits } = require('discord.js');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
@@ -30,7 +30,13 @@ client.once('ready', async () => {
     }
 
     if (!fs.existsSync(VIDEO_PATH)) {
-        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found in the project root!");
+        console.error("[-] CRITICAL ERROR: 'video.mp4' file not found!");
+        return;
+    }
+
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) {
+        console.error("[-] ERROR: Bot is not in the specified Guild/Server!");
         return;
     }
 
@@ -38,8 +44,12 @@ client.once('ready', async () => {
         console.log("[~] Initializing StreamConnection...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Forcing connection to voice channel...");
-        client.guilds.cache.get(GUILD_ID)?.shard.send({
+        console.log("[~] Joining voice channel safely...");
+        
+        // استخدام دالة الانتظار للتأكد من جاهزية الشارد تماماً قبل إرسال أمر الدخول
+        await new Promise(resolve => setTimeout(resolve, 3000));
+
+        guild.shard.send({
             op: 4,
             d: {
                 guild_id: GUILD_ID,
@@ -50,16 +60,15 @@ client.once('ready', async () => {
             }
         });
 
-        console.log("[~] Waiting for connection handshake...");
+        console.log("[~] Waiting for voice handshake to complete...");
         await new Promise(r => setTimeout(r, 4000));
 
         if (typeof streamConnection.setVideoStatus === 'function') {
             streamConnection.setVideoStatus(true);
         }
 
-        console.log("[~] Starting optimized FFmpeg stream to bypass Error 2015...");
+        console.log("[~] Starting optimized FFmpeg stream...");
 
-        // تعديل إعدادات FFmpeg لتتناسب بدقة مع متطلبات ديسكورد للكاميرا
         const command = ffmpeg(VIDEO_PATH)
             .inputOptions([
                 '-stream_loop -1',
@@ -81,7 +90,7 @@ client.once('ready', async () => {
 
         streamLivestreamVideo(command, streamConnection);
         
-        console.log("[+] Camera is OFFICIALLY ON and streaming successfully!");
+        console.log("[+] Bot successfully joined the room and stream is active!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
