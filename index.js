@@ -34,13 +34,36 @@ client.once('ready', async () => {
         return;
     }
 
+    const guild = client.guilds.cache.get(GUILD_ID);
+    if (!guild) {
+        console.error("[-] ERROR: Bot is not in the specified Server/Guild!");
+        return;
+    }
+
     try {
-        console.log("[~] Initializing StreamConnection and joining voice channel...");
+        console.log("[~] Initializing StreamConnection...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        // استخدام دالة المكتبة الرسمية لدخول الروم وتشغيل الكاميرا تلقائياً
-        await streamConnection.joinVoiceChannel(CHANNEL_ID);
-        console.log("[+] Successfully joined voice channel and turned on camera!");
+        console.log("[~] Forcing direct entry to voice channel via WebSocket Opcode 4...");
+        
+        // إرسال أمر الانضمام المباشر للسيرفر لتخطى أي عائق في المكتبة
+        guild.shard.send({
+            op: 4,
+            d: {
+                guild_id: GUILD_ID,
+                channel_id: CHANNEL_ID,
+                self_mute: false,
+                self_deaf: false,
+                self_video: true
+            }
+        });
+
+        console.log("[~] Waiting for voice connection handshake...");
+        await new Promise(r => setTimeout(r, 5000));
+
+        if (typeof streamConnection.setVideoStatus === 'function') {
+            streamConnection.setVideoStatus(true);
+        }
 
         console.log("[~] Starting optimized FFmpeg stream...");
 
@@ -64,7 +87,8 @@ client.once('ready', async () => {
             ]);
 
         streamLivestreamVideo(command, streamConnection);
-        console.log("[+] Video is streaming perfectly into the room!");
+        
+        console.log("[+] Stream and camera execution triggered successfully!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
