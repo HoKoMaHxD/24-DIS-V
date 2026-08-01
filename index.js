@@ -1,5 +1,5 @@
 const express = require('express');
-const { Client, GatewayIntentBits } = require('discord.js');
+const { Client } = require('discord.js-selfbot-v13');
 const { StreamConnection, streamLivestreamVideo } = require('@dank074/discord-video-stream');
 const ffmpeg = require('fluent-ffmpeg');
 ffmpeg.setFfmpegPath(require('ffmpeg-static'));
@@ -9,10 +9,11 @@ const app = express();
 app.get('/', (req, res) => res.send('Bot is Streaming 24/7!'));
 app.listen(process.env.PORT || 3000, () => console.log('Web server is ready!'));
 
-const client = new Client({
+const client = new Client({ 
+    checkUpdate: false,
     intents: [
-        GatewayIntentBits.Guilds,
-        GatewayIntentBits.GuildVoiceStates
+        "GUILDS",
+        "GUILD_VOICE_STATES"
     ]
 });
 
@@ -21,7 +22,7 @@ const GUILD_ID = process.env.GUILD_ID?.trim();
 const CHANNEL_ID = process.env.CHANNEL_ID?.trim();
 const VIDEO_PATH = "./video.mp4"; 
 
-client.once('ready', async () => {
+client.on('ready', async () => {
     console.log(`[+] Logged in successfully as ${client.user.tag}`);
     
     if (!GUILD_ID || !CHANNEL_ID) {
@@ -38,17 +39,12 @@ client.once('ready', async () => {
         console.log("[~] Initializing StreamConnection...");
         const streamConnection = new StreamConnection(client, GUILD_ID);
 
-        console.log("[~] Connecting directly to voice channel...");
-        
-        // جلب الروم الصوتي والاتصال به بشكل مباشر ومضمون
-        const channel = await client.channels.fetch(CHANNEL_ID);
-        if (!channel || !channel.isVoiceBased()) {
-            console.error("[-] ERROR: Channel not found or is not a voice channel!");
-            return;
-        }
+        console.log("[~] Joining voice channel...");
+        await streamConnection.joinVoiceChannel(CHANNEL_ID);
 
-        await streamConnection.joinChannel(CHANNEL_ID);
-        console.log("[+] Successfully joined the voice channel!");
+        if (typeof streamConnection.setVideoStatus === 'function') {
+            streamConnection.setVideoStatus(true);
+        }
 
         console.log("[~] Starting optimized FFmpeg stream...");
 
@@ -73,7 +69,7 @@ client.once('ready', async () => {
 
         streamLivestreamVideo(command, streamConnection);
         
-        console.log("[+] SUCCESS: Camera is ON and video is streaming!");
+        console.log("[+] SUCCESS: Account is in the room and streaming video!");
 
     } catch (error) {
         console.error("[-] Stream Execution Error:", error);
